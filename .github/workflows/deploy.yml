@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # 🌟 核心修复 1：强制使用极其稳定的 Node 20 环境，规避 Node 24 的编译崩溃
+          node-version: '24' # 🌟 核心修复 1：强制使用极其稳定的 Node 20 环境，规避 Node 24 的编译崩溃
           cache: 'pnpm'
 
       - name: Install dependencies

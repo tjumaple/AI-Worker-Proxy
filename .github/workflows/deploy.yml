@@ -10,9 +10,50 @@ permissions:
   contents: write
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Run type check
+        run: pnpm run type-check
+
+      - name: Format code
+        run: pnpm exec prettier --write "src/**/*.ts"
+
+      - name: Commit and push formatting changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || git commit -m "style: auto-format with prettier [skip ci]"
+          git push
+
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
+    needs: lint
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +68,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24' # 🌟 核心修复 1：强制使用极其稳定的 Node 20 环境，规避 Node 24 的编译崩溃
+          node-version: '24'
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -37,9 +78,13 @@ jobs:
         env:
           ROUTES_CONFIG: ${{ vars.ROUTES_CONFIG }}
         run: |
-          CONFIG_STR="${ROUTES_CONFIG:-{}}"
-          MINIFIED_CONFIG=$(echo "$CONFIG_STR" | jq -c .)
+          # Minify JSON to stay within Cloudflare's 5.1 kB text binding limit
+          MINIFIED_CONFIG=$(echo "$ROUTES_CONFIG" | jq -c .)
+
+          # Remove existing [vars] section and everything after it
           sed -i '/^\[vars\]/,$d' wrangler.toml
+
+          # Add new [vars] section with GitHub Variable
           cat >> wrangler.toml << EOF
 
           [vars]
@@ -51,4 +96,3 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: pnpm # 🌟 核心修复 2：明确告诉 Wrangler 我们用的是 pnpm
